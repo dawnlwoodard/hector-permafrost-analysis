@@ -18,8 +18,8 @@ sigmoid_cap <- paste(
     "global annual mean air temperature since pre-industrial (1750)."
 )
 
-setEPS()
-postscript("../figures/hector_vs_kessler.eps")
+setEPS(bg = "white", family = "Times")
+postscript("../figures/hector_vs_kessler.eps", width=7, height=4)
 plot(0, 0, type = "n", xlim = c(0, 8), ylim = c(0, 1),
      xlab = expression(Delta * T[air] ~ (K)),
      ylab = "Frac. permafrost remaining")
@@ -54,8 +54,8 @@ rcps <- c("26", "45", "60", "85")
 names(rcps) <- paste0("RCP", rcps)
 results <- purrr::map_dfr(rcps, run_rcp, .id = "RCP")
 
-setEPS()
-postscript("../figures/hector_4panel_results.eps")
+setEPS(bg = "white", family = "Times")
+postscript("../figures/hector_4panel_results.eps", width=7, height=4)
 results %>%
     mutate(variable = recode_factor(
         variable,
