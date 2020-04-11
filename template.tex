@@ -9,7 +9,7 @@
 %% Please use the following documentclass and journal abbreviations for discussion papers and final revised papers.
 
 %% 2-column papers and discussion papers
-\documentclass[essd, manuscript]{copernicus}
+\documentclass[journal abbreviation, manuscript]{copernicus}
 
 
 
@@ -44,6 +44,7 @@
 % Hydrology and Earth System Sciences (hess)
 % Journal of Micropalaeontology (jm)
 % Journal of Sensors and Sensor Systems (jsss)
+% Magnetic Resonance (mr)
 % Mechanical Sciences (ms)
 % Natural Hazards and Earth System Sciences (nhess)
 % Nonlinear Processes in Geophysics (npg)
@@ -89,7 +90,9 @@
 
 %% The [] brackets identify the author with the corresponding affiliation. 1, 2, 3, etc. should be inserted.
 
-%% If an author is deceased, please add a further affiliation and mark the respective author name(s) with a dagger, e.g. "\Author[2,$\dag$]{Anton}{Aman}" with the affiliations "\affil[2]{University of ...}" and "\affil[$\dag$]{deceased, 1 July 2019}"
+%% If an author is deceased, please mark the respective author name(s) with a dagger, e.g. "\Author[2,$\dag$]{Anton}{Aman}", and add a further "\affil[$\dag$]{deceased, 1 July 2019}".
+
+%% If authors contributed equally, please mark the respective author names with an asterisk, e.g. "\Author[2,*]{Anton}{Aman}" and "\Author[3,*]{Bradley}{Bman}" and add a further affiliation: "\affil[*]{These authors contributed equally to this work.}".
 
 
 \correspondence{NAME (EMAIL)}
@@ -125,7 +128,7 @@ TEXT
 \copyrightstatement{TEXT}
 
 
-\introduction[test other heading]  %% \introduction[modified heading if necessary]
+\introduction  %% \introduction[modified heading if necessary]
 TEXT
 
 
@@ -168,7 +171,7 @@ TEXT
 \subsection{}     %% Appendix A1, A2, etc.
 
 
-\noappendix       %% use this to mark the end of the appendix section
+\noappendix       %% use this to mark the end of the appendix section. Otherwise the figures might be numbered incorrectly (e.g. 10 instead of 1).
 
 %% Regarding figures and tables in appendices, the following two options are possible depending on your general handling of figures and tables in the manuscript environment:
 
@@ -243,6 +246,8 @@ REFERENCE 2
 
 %% When figures and tables are placed at the end of the MS (article in one-column style), please add \clearpage
 %% between bibliography and first table and/or figure as well as between each table and/or figure.
+
+% The figure files should be labelled correctly with Arabic numerals (e.g. fig01.jpg, fig02.png).
 
 
 %% ONE-COLUMN FIGURES
