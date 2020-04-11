@@ -134,7 +134,7 @@ The change in frozen fraction at a given time step, $\Delta \Phi[t]$, is given b
 
 \begin{figure}
     \centering
-    \includegraphics[width=0.5\textwidth]{figures/hector_vs_kessler.eps}
+    \includegraphics[width=0.8\textwidth]{figures/hector_vs_kessler.eps}
     \caption{REsults of turning on and off permafrost}
     \label{fig:4panel}
 \end{figure}
@@ -156,13 +156,9 @@ Detritus respiration increases with biome-specific air temperature change since 
 while soil respiraiton increases with the 200 year running mean of air temperature ($T_{200}[i,t]$) because soils warm slowly relative to the atmosphere.
 
 \begin{gather*}
-
-T_{air}[i,t] = \delta \, T_{air}[t] \\
-
+T_{air}[i,t] = \delta T_{air}[t] \\
 RH_d[i,t] = \frac{1}{4} C_d Q_{10}[i] ^ {{T}[i,t] / 10} \\
-
 RH_s[i,t] = \frac{1}{50} C_s Q_{10}[i] ^ {T_{200}[i,t] / 10} \\
-
 \end{gather*}
 
 In the original formulation, natural CH~4~ emissions were a prescribed constant value.
@@ -176,7 +172,7 @@ In the revised version here, natural CH~4~ emissions are a fraction of heterotro
 Initial permafrost C is set to 1035 Pg C based on the estimate for near-surface (<3 m depth) permafrost by \citet{hugelius_2014_estimated}.
 
 
-For globally-averaged permafrost, exponential parameters $a = `r pfa`$, $b = `r pfb`$, and $c = `r pfc`$ to most closely reproduce the rate of `kessler_m` K$^{-1}$ reported by \citet{kessler_2017_estimating} over the range of 0.8 \footnotemark to 4 K above the pre-industrial baseline.
+For globally-averaged permafrost, exponential parameters $a = 2.371$, $b = -0.676$, and $c = -3.685$ to most closely reproduce the rate of 0.172 K$^{-1}$ reported by \citet{kessler_2017_estimating} over the range of 0.8 K \footnotemark to 4 K above the pre-industrial baseline.
 
 \footnotetext{[Kessler (2015)][kessler] report this as temperature change from year 2000. 0.8 K is the warming since pre-industrial as estimated by the default Hector configuration.}
 
