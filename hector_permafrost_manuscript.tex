@@ -14,6 +14,8 @@
 %\usepackage{rotating}
 %\usepackage{amsmath}
 
+\usepackage{booktabs}
+
 \begin{document}
 
 \title{Hector Permafrost}
@@ -163,7 +165,7 @@ In the new configuration, additional CH$_4$ emissions are added from $RH_{CH4}$.
 \centering
 %\linespread{1.3}
 \caption{Hector configuration of permafrost-related parameters and initial values based on literature review.}
- \begin{tabularx}{\textwidth}{l l c c p{1.25in} p{1.75in}} 
+ \begin{tabularx}{\textwidth}{l l l l p{1.25in} p{1.75in}} 
  \hline\noalign{\medskip}
 Parameter & Hector Nomenclature & Value & Estimated Range & Reference & Description\\ [1ex]
  \hline\noalign{\medskip}
@@ -212,6 +214,12 @@ The most significant parameter in terms of the net effect
     \label{fig:sensitivity}
 \end{figure}
 
+
+\begin{table}
+\caption{Sensitivity analysis results}
+\include{tables/table}
+\label{table:sensitivity}
+\end{table}
 
 \section{Discussion}
 Rate of permafrost C release also depends on soil moisture conditions -- drier soils release C much faster ("carbon bomb") than wetter soils ("carbon fizz") \citep{elberling_2013_long-term}.
