@@ -1,148 +1,53 @@
-#' Parameter sensitivity analysis
-#'
-#' Perform a PEcAn-like parameter sensitivity analysis to analyze the
-#' contribution of parameters to predictive uncertainty.
-#'
-#' This analysis produces three key metrics:
-#'
-#' - "Coefficient of variation (CV)" describes the relative
-#' uncertainty of the input parameter. It is calculated as the ratio
-#' between the input parameter variance and its median value.
-#'
-#' - "Elasticity" is the normalized sensitivity of the model to a
-#' change in one parameter.
-#'
-#' - "Partial variance" is the fraction of variance in the model
-#' output that is explained by the given parameter. In essence, it
-#' integrates the information provided by the CV and elasticity.
-#'
-#' The theory and implementation are based on the sensitivity analysis
-#' described by [LeBauer et al.
-#' (2013)](https://doi.org/10.1890/12-0137.1), but with several key
-#' differences:
-#'
-#' - LeBauer et al. use a cubic spline interpolation through each
-#' point in the model output. This function uses a generalized
-#' additive model regression ([mgcv::gam()]).
-#' - LeBauer et al. fit individual splines to each parameter-output
-#' combination where other parameters are held constant at their
-#' median. This function fits a multivariate generalized additive
-#' regression model, and then uses that fit to calculate the partial
-#' derivatives.
-#'
-#' @param df `data.frame` of Hector results.
-#' @param xcols Character vector of parameter column names
-#' @param ycol Name of column containing response variable
-#' @param .type Whether the multivariate fit is "additive" (`Y ~ a + b +
-#'   c`, default) or "interactive" (`Y ~ a * b * c`). This argument
-#'   supports partial matching via [base::match.arg()].
-#' @return `data.frame` of sensitivity analysis results. See Details.
-#' @author Alexey Shiklomanov
-#' @export
-sensitivity_analysis <- function(dat, xcols, ycol, .type = "additive") {
-  modtype <- match.arg(.type, c("additive", "interactive"))
-  .collapse <- switch(modtype, additive = " + ", interactive = " * ")
-  rhs <- paste(sprintf("s(%s)", xcols), collapse = .collapse)
-  form <- paste(ycol, rhs, sep = " ~ ")
-  fit <- mgcv::gam(as.formula(form), data = dat)
-  xmed <- apply(dat[, xcols], 2, median)
-  xcv <- (apply(dat[, xcols], 2, var) / xmed) %>%
-    tibble::enframe("param", "cv")
-  pred <- apply(dat[, xcols], 2, quantile, probs = c(0.49, 0.51))
-  dpred <- apply(pred, 2, diff)
-  ymed <- median(dat[[ycol]])
-  
-  # Elasticity
-  el_inputs <- lapply(
-    xcols,
-    function(x) {
-      as.data.frame(c(rlang::list2(
-        !!x := pred[, x],
-        !!!xmed[xcols != x]
-      )))
-    }
-  )
-  names(el_inputs) <- xcols
-  el_results <- lapply(el_inputs, predict, object = fit)
-  el_slope <- ((vapply(el_results, diff, numeric(1)) / dpred) /
-                 (ymed / xmed)) %>%
-    tibble::enframe("param", "elasticity")
-  
-  # Prediction variance
-  pred_inputs <- lapply(
-    xcols,
-    function(x) {
-      as.data.frame(c(rlang::list2(
-        !!x := dat[[x]],
-        !!!xmed[xcols != x]
-      )))
-    }
-  )
-  names(pred_inputs) <- xcols
-  pred_results <- lapply(pred_inputs, predict, object = fit)
-  pred_var <- vapply(pred_results, var, numeric(1)) %>%
-    tibble::enframe("param", "pred_var") %>%
-    dplyr::mutate(partial_var = pred_var / sum(pred_var))
-  
-  purrr::reduce(list(xcv, el_slope, pred_var), dplyr::full_join, by = "param")
-  
-}
+library(hectortools)
+library(tidyverse)
+library(data.table)
 
 
-run_sensitivity_analysis <- function(dat, ycol, xcols, .type = "additive"){
-  modtype <- match.arg(.type, c("additive", "interactive"))
-  .collapse <- switch(modtype, additive = " + ", interactive = " * ")
-  rhs <- paste(sprintf("s(%s)", xcols), collapse = .collapse)
-  form <- paste(ycol, rhs, sep = " ~ ")
-  fit <- mgcv::gam(as.formula(form), data = dat)
-  xmed <- apply(dat[, xcols], 2, median)
-  xcv <- (apply(dat[, xcols], 2, var) / xmed) %>%
-    tibble::enframe("param", "cv")
-  pred <- apply(dat[, xcols], 2, quantile, probs = c(0.49, 0.51))
-  dpred <- apply(pred, 2, diff)
-  ymed <- median(dat[[ycol]])
+# TUNING FUNCTIONS
+
+# data is fraction of permafrost lost 1850-2005, fraction of permafrost carbon lost 2005-2100 in RCP4.5 and RCP8.5
+run_for_optim <- function(values=c(1.953, 0.9619), data=c(0.16, 0.58, 0.29)){
+  core45 <- init_rcp(rcp="45") #pf run with default pf parameters
+  core85 <- init_rcp(rcp="85")
   
-  # Elasticity
-  el_inputs <- lapply(
-    xcols,
-    function(x) {
-      as.data.frame(c(rlang::list2(
-        !!x := pred[, x],
-        !!!xmed[xcols != x]
-      )))
-    }
-  )
+  parameters <- c("pf_mu", "pf_sigma")
   
-  names(el_inputs) <- xcols
-  el_results <- lapply(el_inputs, predict, object = fit)
-  el_slope <- ((vapply(el_results, diff, numeric(1)) / dpred) /
-                 (ymed / xmed)) %>%
-    tibble::enframe("param", "elasticity")
+  for (i in seq(1,length(parameters))){
+    parameters[i] = paste0("permafrost.",parameters[i])
+  }
+  print(parameters)
+  print(values)
+  run_with_params(core45, parameters, values)
+  run_with_params(core85, parameters, values)
   
-  # Prediction variance
-  pred_inputs <- lapply(
-    xcols,
-    function(x) {
-      as.data.frame(c(rlang::list2(
-        !!x := dat[[x]],
-        !!!xmed[xcols != x]
-      )))
-    }
-  )
-  names(pred_inputs) <- xcols
-  pred_results <- lapply(pred_inputs, predict, object = fit)
-  pred_var <- vapply(pred_results, var, numeric(1)) %>%
-    tibble::enframe("param", "pred_var") %>%
-    dplyr::mutate(partial_var = pred_var / sum(pred_var))
+  historical <- fetchvars(core45, 1850:2005, F_FROZEN())
+  rcp45 <- fetchvars(core45, 2005:2100, F_FROZEN())
+  rcp85 <- fetchvars(core85, 2005:2100, F_FROZEN())
   
-  purrr::reduce(list(xcv, el_slope, pred_var), dplyr::full_join, by = "param")
+  pf_frac_lost_1850_2005 <- (historical$value[length(historical$value)] - historical$value[1])/historical$value[1]
+  pf_frac_left_rcp45 <- rcp45$value[length(rcp45$value)]/rcp45$value[1]
+  pf_frac_left_rcp85 <- rcp85$value[length(rcp85$value)]/rcp85$value[1]
   
+  hector = c(-pf_frac_lost_1850_2005, pf_frac_left_rcp45, pf_frac_left_rcp85)
+  
+  frac_diff <- (hector-data)/data
+  
+  err <- sum((frac_diff)^2)^0.5
+  
+  return(err)
 }
 
-run_all_param_sets <- function(param_priors, n_runs, outvar=GLOBAL_TEMP()){
-  out <- do.call("rbind", replicate(n_runs, run_with_param_set(pick_params(param_priors), outvar), simplify = FALSE))
-  return(out)
+run_with_params <- function(core, parameters, values){
+  for (i in seq(1,length(values))){
+    old_value <- fetchvars(core, NA, parameters[i])
+    unit <- as.character(old_value[["units"]])
+    setvar(core, NA, parameters[i], values[i], unit)    
+  }
+  reset(core)
+  invisible(run(core))
 }
+
+# FUNCTIONS FOR RUNNING MODEL
 
 set_param <- function(core, param, value, biome=NA) {
   if (!is.na(biome)) param <- paste(biome, param, sep=".")
@@ -152,45 +57,8 @@ set_param <- function(core, param, value, biome=NA) {
   reset(core)
 }
 
-pick_params <- function(param_set) {
-  rows <- sample(1:nrow(param_set), ncol(param_set))
-  out <- param_set[1,]
-  for (i in 1:ncol(param_set)){
-    out[1,i] <- param_set[rows[i],i]
-  }
-  return(out)
-}
-
-run_with_param_set <- function(param_set, outvar=GLOBAL_TEMP()) {
-  rcp45 <- read_ini(system.file("input", "hector_rcp45.ini", package = "hector"))
-  perm_ini <- modifyList(rcp45, list(simpleNbox = list(
-    permafrost_c = param_set$permafrost_c
-  )))
-  write_ini(perm_ini, "./hector_rcp45_perm.ini")
-  perm45 <- "./hector_rcp45_perm.ini"
-  core <- newcore(perm45, suppresslogging = FALSE)
-  split_biome(core, "global", c("non-permafrost", "permafrost"),
-              fveg_c = c(0.98, 0.02),
-              fdetritus_c = c(0.98, 0.02),
-              fsoil_c = c(0.89, 0.11),
-              fpermafrost_c = c(0.0000001,0.9999999),
-              rh_ch4_frac = c(0,param_set$rh_ch4_frac))
-  Map(function(x, y) set_param(core, y, x, biome="permafrost"), unlist(param_set[,1:3], use.names=FALSE), names(param_set[,1:3]))
-  run(core)
-  fetchvars(core, 2000:2100, outvar) %>% 
-    filter(year==2100) %>%  
-    mutate(temperature=value) %>% 
-    select(temperature) ->
-    tgav_res
-  
-  output <- cbind(tgav_res, param_set)
-  #mapply(set_param, names(params), unlist(params[1,], use.names=FALSE), core=core)
-  return(output)
-}
-
-
-
 run_with_param <- function(core, parameter, value) {
+  
   old_value <- fetchvars(core, NA, parameter)
   unit <- as.character(old_value[["units"]])
   setvar(core, NA, parameter, value, unit)
@@ -198,40 +66,297 @@ run_with_param <- function(core, parameter, value) {
   run(core)
   result <- fetchvars(core, 2000:2100, outvars)
   result[["param_value"]] <- value
-  result[["param_name"]] <- parameter
+  if (grepl(".", parameter, fixed=TRUE)){
+    result[["param_name"]] <- unlist(strsplit(parameter, ".", fixed=TRUE))[2]
+  }
+  else{
+    result[["param_name"]] <- parameter
+  }
   result
 }
 
 #' Run Hector with a range of parameter values
-run_with_param_range <- function(core, parameter, values, default) {
+run_with_param_range <- function(core, parameter, values, default, outvars=NULL) {
   default_run <- run_with_param(core, parameter, default)
   invisible(reset(core))
   mapped <- Map(function(x) run_with_param(core, parameter, x), values)
-  mapped_default <- Map(function(x) mutate(x, default_val=default_run$value, diff=value-default_val, 
+  mapped_default <- Map(function(x) mutate(x, param_diff=(param_value-default)/default, default_val=default_run$value, diff=value-default_val, 
                                            pct_diff=100*(value-default_val)/default_val), mapped)
   Reduce(rbind, mapped_default)
 }
 
-run_with_ini <- function(value) {
-  rcp45 <- read_ini(system.file("input", "hector_rcp45.ini", package = "hector"))
-  perm_ini <- modifyList(rcp45, list(simpleNbox = list(
-    permafrost_c = value
-  )))
-  write_ini(perm_ini, "./hector_rcp45_perm.ini")
-  perm45 <- "./hector_rcp45_perm.ini"
-  core <- newcore(perm45, suppresslogging = TRUE)
+run_with_ini_single <- function(value) {
+  core <- init_rcp(param_list = list("permafrost_c0"=value))
   run(core)
   result <- fetchvars(core, 2000:2100, outvars)
   result[["param_value"]] <- value
-  result[["param_name"]] <- "permafrost_c0"
+  result[["param_name"]] <- "permafrost.permafrost_c0"
   return(result)
 }
 
+# model_list needed if target_param = nonpf_c
+run_with_ini <- function(value, target_param, params, model_list=NULL, rcp="45", start_year=2000, end_year=2100) {
+  # this function should not be accessed externally - only from run_with_ini_range so that params input is correct
+  if (target_param=="nonpf_c"){
+    veg_val <- value*get_lm_prediction(model_list[["veg"]], value)
+    soil_val <- value*get_lm_prediction(model_list[["soil"]], value)
+    litter_val <- value*get_lm_prediction(model_list[["litter"]], value)
+    tot_c <- veg_val+soil_val+litter_val
+    extra_c <- value-tot_c
+    params[["pf_soil"]] <- max(soil_val + (soil_val/tot_c)*extra_c,0)  # using tot_c not value so that proportions add to 1
+    params[["pf_veg"]] <- max(veg_val + (veg_val/tot_c)*extra_c,0)
+    params[["pf_det"]] <- max(litter_val + (litter_val/tot_c)*extra_c,0)
+    print(params[c("pf_soil", "pf_det", "pf_veg")])
+  } else {
+    # TODO iterate through values list and set params
+    params[target_param] <- value
+  }
+    
+  core <- init_rcp(rcp=rcp, param_list = params)
+  # core <- init_rcp(rcp=rcp, pf_c0=params[[PF_C0()]], wf=params[[WARMINGFACTOR()]], 
+  #                 rh_ch4_frac=params[[RH_CH4_FRAC()]], fpf_static=params[[FPF_STATIC()]], 
+  #                 pf_veg=params[["pf_veg"]], pf_soil=params[["pf_soil"]], pf_det=params[["pf_det"]], 
+  #                 default_wf=params[["default_wf"]])
+  
+  run(core)
+  result <- fetchvars(core, start_year:end_year, outvars)
+  result[["param_value"]] <- value
+  result[["param_name"]] <- target_param
+  return(result)
+}
+
+
 #' Run Hector with a range of parameter values
-run_with_ini_range <- function(values, default) {
-  default_run <- run_with_ini(default)
-  mapped <- Map(function(x) run_with_ini(x), values)
-  mapped_default <- Map(function(x) mutate(x, default_val=default_run$value, diff=value-default_val, 
+run_with_ini_range <- function(values, default, target_param, model_list=NULL, params_input=list(), outvars=NULL, rcp="45") {
+  
+  print("starting run_with_ini_range")
+  params <- list("permafrost_c0"=865, "warmingfactor"=2.0, "rh_ch4_frac"=0.023, "default_wf"=2.0, "fpf_static"=0.74, "pf_soil"=307, "pf_det"=6.06, "pf_veg"=16.5)
+  params[names(params_input)] <- params_input  # overwrite with any values given in params_input
+  print("starting default run")
+  default_run <- run_with_ini(default, target_param, model_list=model_list, params=params, rcp=rcp)
+  mapped <- Map(function(x) run_with_ini(x, target_param=target_param, params=params, model_list = model_list, rcp=rcp), values)
+  mapped_default <- Map(function(x) mutate(x, param_diff=(param_value-default)/default, default_val=default_run$value, diff=value-default_val, 
                                            pct_diff=100*(value-default_val)/default_val), mapped)
   Reduce(rbind, mapped_default)
+}
+
+
+#' Run Hector with a range of parameter values
+run_with_ini_range_old <- function(values, default=825) {
+  default_run <- run_with_ini(default)
+  mapped <- Map(function(x) run_with_ini(x), values)
+  mapped_default <- Map(function(x) mutate(x, param_diff=(param_value-default)/default, default_val=default_run$value, diff=value-default_val, 
+                                           pct_diff=100*(value-default_val)/default_val), mapped)
+  Reduce(rbind, mapped_default)
+}
+
+run_scenarios <- function(scenarios, rcp, end_date=2100){
+  hc <- init_rcp(rcp=rcp, pf=FALSE, default_wf = default_wf)
+  run(hc, max(dates))
+  
+  return(all_cores)
+}
+
+get_lm_prediction <- function(lm_model, value){
+  output <- lm_model$coefficients[[2]]*value + lm_model$coefficients[[1]]
+  return(output)
+}
+
+get_slope <- function(y, x){
+  data = tibble(y=y,x=x)
+  lm_model <- lm(y~x, data=data)
+  slope <- lm_model$coefficients[[2]]
+  return(slope)
+}
+
+get_nonpfc_modellist <- function(){
+  litter_fracs <- c(0.0047, 0.0184, 0.0278)  # fraction of total non_pf c in pf region (lb, default, ub)
+  soil_fracs <- c(0.9835, 0.9314, 0.8962)
+  veg_fracs <- c(0.0119, 0.0501, 0.0760)
+  tot_non_pf_c <- c(266.8, 329.6, 392.2)
+  nonpf_data <- tibble(tot_non_pf_c, litter_fracs, soil_fracs, veg_fracs)
+  model_list <- list("litter"=lm(litter_fracs~tot_non_pf_c,data=nonpf_data),"veg"=lm(veg_fracs~tot_non_pf_c,data=nonpf_data), "soil"=lm(soil_fracs~tot_non_pf_c,data=nonpf_data))
+  return(model_list)
+}
+
+add_column <- function(df, values, column){
+  df %>% mutate({{column}}:=values) -> output
+  return(output)
+  #df %>% mutate({{column}}:=values)
+}
+
+# vars to set is named list of param=value
+init_rcp <- function(scenario="", rcp="45", param_list) {  # vars_to_set=list(), pf_c0=865, wf=2.0, rh_ch4_frac=0.023, fpf_static=0.74, default_wf=1.0, pf_soil=307, pf_det=13.4, pf_veg=21.5){
+  
+  # should be able to pass this function a whole list of parameters 
+  # and it should know which ones can get set by set_param vs which are in ini vs which in split_biome
+  # 
+  params_to_set <- c(PF_MU(), PF_SIGMA())
+  
+  # TODO should read these in from ini file
+  default_soil_c <- 2358  # updated from Hector's previous default value
+  default_veg_c <- 550
+  default_det_c <- 55
+  # calc pf veg, det, soil fracs
+  fpf_soil <- param_list[["pf_soil"]]/default_soil_c
+  fpf_veg <- param_list[["pf_veg"]]/default_veg_c
+  fpf_det <- param_list[["pf_det"]]/default_det_c
+  
+  if ( scenario=="default" ){ 
+    param_list[[WARMINGFACTOR()]] <- param_list[["default_wf"]]
+    param_list[[PF_C0()]] <- 0.0; param_list[[RH_CH4_FRAC()]] <- 0.0 } 
+  else if ( scenario=="pf" ){ param_list[[WARMINGFACTOR()]] <- param_list[["default_wf"]]; param_list[[RH_CH4_FRAC()]] <- 0.0 } 
+  else if ( scenario=="pf_ch4" ){ param_list[[WARMINGFACTOR()]] <- param_list[["default_wf"]]} 
+  else if ( scenario=="pf_wf" ){ param_list[[RH_CH4_FRAC()]] <- 0.0 } 
+  else if ( scenario=="pf_full") {
+    # nothing to change
+  }
+  else { 
+    print("ERROR: Scenario not recognized. Exiting.")
+    exit()
+  }
+  # not including pf_ch4_wf because all default values already correspond to this scenario
+
+  rcp_ini <- read_ini(system.file("input", paste0("hector_rcp",rcp,".ini"), package = "hector"))
+  perm_ini <- modifyList(rcp_ini, list(simpleNbox = list(
+    permafrost_c = param_list[[PF_C0()]], # default for permafrost run is 825: 727/0.881
+    soil_c = 2358
+  )))
+  write_ini(perm_ini, paste0("./hector_rcp",rcp,"_perm.ini"))
+  
+  core <- newcore(paste0("./hector_rcp",rcp,"_perm.ini"), suppresslogging = FALSE)
+  split_biome(core, "global", c("non-permafrost", "permafrost"),
+              fveg_c = c(1-fpf_veg, fpf_veg),
+              fdetritus_c = c(1-fpf_det, fpf_det),
+              fsoil_c = c(1-fpf_soil, fpf_soil),
+              fpermafrost_c = c(0,1),
+              warmingfactor = c(1.0,param_list[[WARMINGFACTOR()]]),
+              fpf_static = c(param_list[[FPF_STATIC()]], param_list[[FPF_STATIC()]]),
+              rh_ch4_frac = c(0,param_list[[RH_CH4_FRAC()]]))
+  
+  settable_param_vals <- param_list[params_to_set]
+  if (length(settable_param_vals)>0){
+    for (i in range(1,length(settable_param_vals))){
+      core <- set_param(core, names(settable_param_vals)[i],settable_param_vals[[i]], biome="permafrost")
+    }
+  }
+  
+  return(core)
+}
+
+
+run_rcp <- function(rcp, scenarios=NA, scenario_names=NA, start_date=2000, end_date=2100, get_c_stocks=FALSE, get_fluxes=FALSE, biome=NA, 
+                    param_inputs=list(), outvars_input=NA) {
+  
+  params=list("fpf_static"=0.74, "warmingfactor"=2.0, "permafrost_c0"=865, "rh_ch4_frac"=0.023, "pf_veg"=16.5, "pf_det"=6.06, "pf_soil"=307)
+  params[names(param_inputs)] = param_inputs
+  print(params)
+  if (anyNA(scenarios)) {
+    scenarios <- c("default", "pf", "pf_ch4", "pf_wf", "pf_full")
+    scenario_names <- c("Hector Default", "Permafrost Only", "Methane Only", "Warming Only", "Permafrost Full")
+  }
+  
+  if (get_c_stocks){
+    outvars <- c(VEG_C(), DETRITUS_C(), SOIL_C(), OCEAN_C(), PERMAFROST_C(), THAWEDP_C(), ATMOSPHERIC_C())
+    dates <- NA
+  } else if (get_fluxes){
+    outvars <- c(RH_DETRITUS(), RH_SOIL(), NPP(), OCEAN_CFLUX(), RH_CH4(), RH_THAWEDP())
+    dates <- NA
+  } else {
+    outvars <- c(ATMOSPHERIC_C(), ATMOSPHERIC_CO2(), ATMOSPHERIC_CH4(), GLOBAL_TEMP(), F_FROZEN(), LUC_EMISSIONS(), FFI_EMISSIONS(),
+                 RH_CH4(), RH_THAWEDP(), RH_SOIL(), RH_DETRITUS(), NPP(), VEG_C(), 
+                 DETRITUS_C(), SOIL_C(), PERMAFROST_C(), THAWEDP_C())
+    # want to make this apply to all but need to exclude ocean variables and append back in automatically
+    if (is.character(biome)){
+      outvars <- paste(biome, outvars, sep=".")
+    }
+    dates <- seq(start_date, end_date)
+  }
+  
+  if (!is.na(outvars_input)){
+    outvars <-c(outvars, outvars_input)
+  }
+
+  cores <- lapply(scenarios, init_rcp, rcp=rcp, param_list=params)
+  #cores <- lapply(scenarios, init_rcp, rcp=rcp, pf_c0=params[["permafrost_c0"]], wf=params[["warmingfactor"]], 
+  #                rh_ch4_frac=params[["rh_ch4_frac"]], fpf_static=params[["fpf_static"]], 
+  #                pf_veg=params[["pf_veg"]], pf_soil=params[["pf_soil"]], pf_det=params[["pf_det"]], 
+  #                default_wf=default_wf)
+  lapply(cores, run, runtodate=end_date)
+  results <- lapply(cores, fetchvars, dates=dates, vars=outvars)
+  results_list <- map2(results, scenario_names, add_column, column="scenario")
+  all_results <- tibble(rbindlist(results_list))
+
+  if (get_c_stocks | get_fluxes){
+    all_results <- mutate(all_results, year=end_date)
+  }
+  
+  return(all_results)
+}
+
+
+process_results <- function(results, pf_c0=825){
+  # assume if any have biome, then all do bc this is not set up to distinguish biomes
+  if (grepl(".",results$variable[1],fixed=TRUE)){ 
+    split_biome <- strsplit(results$variable, ".", fixed=TRUE)
+    results$variable <- unlist(split_biome)[seq(2,length(test),2)]
+  }
+  
+  results %>% 
+    mutate(value=case_when(variable=="permafrost_c" & scenario=="Hector Default"~pf_c0, TRUE~value)) %>%
+    select(-units) %>% 
+    spread(variable, value) %>% 
+    group_by(scenario, RCP) %>% 
+    mutate(pf_carbon_lost = pf_c0-permafrost_c, pct_pf_lost = 100*pf_carbon_lost/pf_c0, 
+           ffi_emissions_sum = cumsum(ffi_emissions), luc_cum = cumsum(luc_emissions), 
+           rh_thawedp_cum = cumsum(rh_thawedp), rh_ch4_cum = cumsum(rh_ch4), soil_c = soil_c, 
+           rh_soil_cum = cumsum(rh_soil), rh_det_cum = cumsum(rh_det), npp_cum = cumsum(npp), 
+           net_carbon_flux = (rh_thawedp_cum + rh_ch4_cum - npp_cum + rh_soil_cum + rh_det_cum + luc_cum), 
+           all_rh = rh_thawedp+rh_ch4+rh_soil+rh_det, nonpf_rh = rh_soil+rh_det, 
+           nonpf_rh_cum = rh_soil_cum + rh_det_cum, nonpf_c_flux = (nonpf_rh - npp + luc_emissions), pf_c_flux = (rh_ch4 + rh_thawedp),
+           nonpf_c_cum = nonpf_rh_cum - npp_cum + luc_cum, pf_c_cum = rh_ch4_cum+rh_thawedp_cum,
+           annual_c_flux = (rh_thawedp+rh_ch4+rh_soil+rh_det-npp+luc_emissions), 
+           net_carbon_storage = soil_c+veg_c+detritus_c) %>% 
+    ungroup() %>% 
+    pivot_longer(-c(RCP, scenario, year), names_to = "variable", values_to = "value") %>% 
+    mutate(var_full_name = recode_factor(
+      variable,
+      pf_carbon_lost = "Permafrost Carbon Lost (Pg C)",
+      ffi_emissions_sum = "Cumulative Fossil Fuel Emissions (Pg C)",
+      ffi_emissions = "Fossil Fuel Emissions (Pg C/yr)",
+      f_frozen = "Frozen Permafrost Fraction",
+      permafrost_c = "Permafrost Carbon (Pg C)",
+      pct_pf_lost = "Fraction Permafrost Lost (%)",
+      thawedp_c = "Thawed Permafrost Carbon (Pg C)",
+      rh_thawedp = "Permafrost CO2 Emissions (Pg C/yr)",
+      rh_thawedp_cum = "Net Permafrost CO2 Emissions (Pg C)",
+      rh_soil = "Non-Permafrost Soil Flux (Pg C/yr)",
+      rh_soil_cum = "Net Non-Permafrost Soil Flux (Pg C)",
+      rh_det = "Detritus Flux (Pg C/yr)",
+      rh_det_cum = "Net Detritus Flux (Pg C)",
+      nonpf_rh = "Non-Permafrost Respiration (Pg C/yr)",
+      nonpf_rh_cum = "Cumulative Non-Permafrost Respiration (Pg C)",
+      npp = "Net Primary Productivity (Pg C/yr)",
+      npp_cum = "Cumulative NPP (Pg C)",
+      luc_emissions = "LUC Emissions (Pg C/yr)",
+      luc_cum = "Cumulative LUC Emissions (Pg C)",
+      nonpf_c_flux = "Non-Permafrost Carbon Flux (Pg C/yr)",
+      pf_c_flux = "Thawed Permafrost Carbon Flux (Pg C/yr)",
+      net_carbon_storage = "Total Land Carbon Storage (Pg C)",
+      net_carbon_flux = "Cumulative Land Carbon Flux (Pg C)",
+      annual_c_flux = "Change in Net Land Carbon Flux (Pg C/yr)",
+      Ca = "Change in Atmospheric CO2 (ppm)",
+      atmos_c = "Atmospheric Carbon (Pg C)",
+      rh_ch4 = "Permafrost CH4 Emissions (Pg C/yr)",
+      rh_ch4_cum = "Net Permafrost CH4 Emissions (Pg C)",
+      CH4 = "Change in Atmospheric CH4 (ppbv)",
+      soil_c = "Non-Permafrost Soil Carbon (Pg C)",
+      detritus_c = "Detritus Carbon (Pg C)",
+      veg_c = "Vegetation Carbon (Pg C)",
+      Tgav = "Change in Temperature (K)"
+    )) ->
+    results_out
+  
+  #results_out$scenario <- factor(results_out$scenario, levels=c("Hector Default", "Permafrost", "Permafrost + CH4", "Permafrost + Warming", "Permafrost + CH4 + Warming"))
+  return(results_out)
 }
