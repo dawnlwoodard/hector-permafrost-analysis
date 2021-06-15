@@ -52,7 +52,7 @@ run_pecan_analysis <- function(dat, ycol, xcols, .type = "additive"){
   pred <- apply(dat[, xcols], 2, quantile, probs = c(0.49, 0.51))
   dpred <- apply(pred, 2, diff)
   ymed <- median(dat[[ycol]])
-  
+
   # Elasticity
   el_inputs <- lapply(
     xcols,
@@ -63,18 +63,13 @@ run_pecan_analysis <- function(dat, ycol, xcols, .type = "additive"){
       )))
     }
   )
-  
+
   names(el_inputs) <- xcols
   el_results <- lapply(el_inputs, predict, object = fit)
-  print
-  ("el_results")
-  print(el_results)
-  print("dpred,ymed,xmed")
-  print(c(dpred,ymed,xmed))
   el_slope <- ((vapply(el_results, diff, numeric(1)) / dpred) /
                  (ymed / xmed)) %>%
     tibble::enframe("param", "elasticity")
-  
+
   # Prediction variance
   pred_inputs <- lapply(
     xcols,
@@ -90,9 +85,10 @@ run_pecan_analysis <- function(dat, ycol, xcols, .type = "additive"){
   pred_var <- vapply(pred_results, var, numeric(1)) %>%
     tibble::enframe("param", "pred_var") %>%
     dplyr::mutate(partial_var = pred_var / sum(pred_var))
-  
+
   purrr::reduce(list(xcv, el_slope, pred_var), dplyr::full_join, by = "param")
 }
+
 
 pick_params <- function(param_set) {
   rows <- sample(1:nrow(param_set), ncol(param_set))
@@ -103,19 +99,20 @@ pick_params <- function(param_set) {
   return(out)
 }
 
+
 process_sensitivity_results <- function(co2_results, ch4_results, tas_results){
-  param_full_names <- c(fpf_static="Static Fraction", 
-                        pf_mu="Frozen Permafrost\nFraction Mean", 
-                        pf_sigma = "Frozen Permafrost\nFraction Stdev", 
-                        permafrost_c = "Initial Permafrost\nPool Size (Pg C)", 
+  param_full_names <- c(fpf_static="Static Fraction",
+                        pf_mu="Frozen Permafrost\nFraction Mean",
+                        pf_sigma = "Frozen Permafrost\nFraction Stdev",
+                        permafrost_c = "Initial Permafrost\nPool Size (Pg C)",
                         rh_ch4_frac = "Methane Fraction\nfrom Thaw Decomp.",
                         warmingfactor = "High Latitutude\nWarming Factor",
                         nonpf_c = "Non-Permafrost C in\nPermafrost Region (Pg C)"
   )
   var_full_names <- c(Tgav="Temperature Anomaly", CO2="Atmospheric CO2", CH4="Atmospheric CH4")
-  output_full_names <- c(cv="Coefficient of Variation", elasticity="Elasticity", 
+  output_full_names <- c(cv="Coefficient of Variation", elasticity="Elasticity",
                          pred_var="Prediction Variance", partial_var="Partial Variance")
-  
+
   co2_results %>% pivot_longer(
     cols = c("cv", "elasticity", "pred_var", "partial_var"),
     names_to = "output",
@@ -123,9 +120,9 @@ process_sensitivity_results <- function(co2_results, ch4_results, tas_results){
     mutate(variable = "CO2",
            param2=recode(param,!!!param_full_names),
            variable2=recode(variable,!!!var_full_names),
-           output2=recode(output,!!!output_full_names)) %>% 
+           output2=recode(output,!!!output_full_names)) %>%
     replace_na(list(value=0)) -> co2_results
-  
+
   ch4_results %>% pivot_longer(
     cols = c("cv", "elasticity", "pred_var", "partial_var"),
     names_to = "output",
@@ -133,9 +130,9 @@ process_sensitivity_results <- function(co2_results, ch4_results, tas_results){
   ) %>% mutate(variable = "CH4",
                param2=recode(param,!!!param_full_names),
                variable2=recode(variable,!!!var_full_names),
-               output2=recode(output,!!!output_full_names)) %>% 
+               output2=recode(output,!!!output_full_names)) %>%
     replace_na(list(value=0)) -> ch4_results
-  
+
   tas_results %>% pivot_longer(
     cols = c("cv", "elasticity", "pred_var", "partial_var"),
     names_to = "output",
@@ -143,11 +140,11 @@ process_sensitivity_results <- function(co2_results, ch4_results, tas_results){
   ) %>% mutate(variable = GLOBAL_TEMP(),
                param2=recode(param,!!!param_full_names),
                variable2=recode(variable,!!!var_full_names),
-               output2=recode(output,!!!output_full_names)) %>% 
+               output2=recode(output,!!!output_full_names)) %>%
     replace_na(list(value=0)) -> tgav_results
-  
+
   all_sensitivity_results <- bind_rows(tgav_results, co2_results, ch4_results)
-  
+
   all_sensitivity_results$variable2 <- factor(x=all_sensitivity_results$variable2, levels=unique(all_sensitivity_results$variable2), ordered=TRUE)
   return(all_sensitivity_results)
 }
@@ -161,7 +158,7 @@ run_simple_sensitivity <- function(params, default_values, outvars, n_pts = 50, 
     print(paste0("starting param: ", param, "= ", default))
 
     if (!is.null(bound_frac)) {
-      param_range <- seq(default-bound_frac*default, default+bound_frac*default, length.out = n_pts) 
+      param_range <- seq(default-bound_frac*default, default+bound_frac*default, length.out = n_pts)
     } else {
       param_range <- seq(bounds[[param]][[1]], bounds[[param]][[2]], length.out = n_pts)
     }
@@ -170,9 +167,9 @@ run_simple_sensitivity <- function(params, default_values, outvars, n_pts = 50, 
       sensitivity_data <- run_with_ini_range(param_range, default, param, outvars, params_input=default_values, rcp=rcp)
     } else if (param == "nonpf_c"){
       sensitivity_data <- run_with_ini_range(param_range, default, param, outvars, params_input=default_values, model_list=model_list, rcp=rcp)
-    
+
     } else if (param %in% c("warmingfactor", "rh_ch4_frac", "pf_mu", "pf_sigma", "fpf_static")){
-      core <- init_rcp(rcp=rcp, param_list=default_values)  # TODO want to update this to use input defaults to be safe
+      core <- init_rcp(rcp=rcp, param_list=default_values)
       # param name must be exact here
       sensitivity_data <- run_with_param_range(core, paste0("permafrost.",param), param_range, default, outvars)
     } else {
@@ -180,7 +177,7 @@ run_simple_sensitivity <- function(params, default_values, outvars, n_pts = 50, 
       exit()
     }
     all_data <- rbind(all_data, sensitivity_data)
-    
+
   }
   return(all_data)
 
@@ -214,19 +211,17 @@ run_with_param_set <- function(param_set, outvar=GLOBAL_TEMP(), end_date=2100, r
   pf_soil <- max(soil_val + (soil_val/tot_c)*extra_c,0,01)  # using tot_c not value so that proportions add to 1
   pf_veg <- max(veg_val + (veg_val/tot_c)*extra_c,0.01)
   pf_det <- max(litter_val + (litter_val/tot_c)*extra_c,0.01)
-  
-  # core <- init_rcp(rcp, pf_c0 = param_set$permafrost_c, rh_ch4_frac = param_set$rh_ch4_frac, wf = param_set$warmingfactor, pf_soil = pf_soil, pf_veg=pf_veg, pf_det=pf_det)
+
   core <- init_rcp(rcp=rcp, param_list=param_set)
-  
-  # TODO update 1:3 so order can change
+
   Map(function(x, y) set_param(core, y, x, biome="permafrost"), unlist(param_set[,1:3], use.names=FALSE), names(param_set[,1:3]))
   run(core)
   if (!run_only){
-    fetchvars(core, 2000:end_date, outvar) %>% 
-      filter(year==end_date) %>%  
+    fetchvars(core, 2000:end_date, outvar) %>%
+      filter(year==end_date) %>%
       select(value) ->
       results
-    
+
     output <- cbind(results, param_set)
     return(output)
   }
