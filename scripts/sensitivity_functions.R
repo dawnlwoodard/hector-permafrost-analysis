@@ -29,16 +29,6 @@
 #' median. This function fits a multivariate generalized additive
 #' regression model, and then uses that fit to calculate the partial
 #' derivatives.
-#'
-#' @param df `data.frame` of Hector results.
-#' @param xcols Character vector of parameter column names
-#' @param ycol Name of column containing response variable
-#' @param .type Whether the multivariate fit is "additive" (`Y ~ a + b +
-#'   c`, default) or "interactive" (`Y ~ a * b * c`). This argument
-#'   supports partial matching via [base::match.arg()].
-#' @return `data.frame` of sensitivity analysis results. See Details.
-#' @author Alexey Shiklomanov
-#' @export
 run_pecan_analysis <- function(dat, ycol, xcols, .type = "additive"){
   modtype <- match.arg(.type, c("additive", "interactive"))
   .collapse <- switch(modtype, additive = " + ", interactive = " * ")
